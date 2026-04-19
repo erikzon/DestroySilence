@@ -1,0 +1,180 @@
+﻿@page "/"
+@using FFmpegBlazor
+@inject IJSRuntime Runtime
+
+<PageTitle>Destroy Silence</PageTitle>
+
+<h1>Video Silence Remover</h1>
+
+<p>Select a video file to remove silence automatically.</p>
+
+<InputFile OnChange="OnFileSelected" />
+<br /><br />
+<button class="btn btn-primary" @onclick="ProcessVideo" disabled="@(selectedFile == null || isProcessing)">
+    @(isProcessing ? "Processing..." : "Remove Silence")
+</button>
+
+@if (isProcessing)
+{
+    <p class="mt-3 text-info">@progress</p>
+}
+
+@if (isDone)
+{
+    <p class="mt-3 text-success">¡Proceso completado! La descarga debería iniciar automáticamente.</p>
+}
+
+@code {
+    private IBrowserFile? selectedFile;
+    private bool isProcessing = false;
+    private bool isDone = false;
+    private string progress = "";
+    private FFMPEG? ffmpeg;
+    
+    // Buffer para leer la consola de FFmpeg
+    private string stderr = ""; 
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (FFmpegFactory.Runtime == null)
+            {
+                await FFmpegFactory.Init(Runtime);
+            }
+
+            ffmpeg = FFmpegFactory.CreateFFmpeg(new FFmpegConfig() { Log = true });
+            
+            // Suscribimos el evento para capturar los tiempos de silencio
+            ffmpeg.Logger += (e) =>
+            {
+                stderr += e.Message + "\n";
+            };
+
+            await ffmpeg.Load();
+            StateHasChanged(); 
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        isDone = false;
+    }
+
+    private async Task ProcessVideo()
+    {
+        if (selectedFile == null || ffmpeg == null || !ffmpeg.IsLoaded) return;
+
+        isProcessing = true;
+        isDone = false;
+        progress = "Writing input file to memory...";
+        StateHasChanged();
+
+        var inputData = new byte[selectedFile.Size];
+        using var stream = selectedFile.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024); // Límite de 100MB
+        await stream.ReadAsync(inputData);
+
+        ffmpeg.WriteFile("input.mp4", inputData);
+
+        progress = "Detecting silence (analyzing audio)...";
+        stderr = ""; // Limpiamos el texto de ejecuciones anteriores
+        StateHasChanged();
+
+        // 1. Escaneo de silencios
+        await ffmpeg.Run("-i", "input.mp4", "-af", "silencedetect=noise=-30dB:d=0.3", "-f", "null", "-");
+
+        var output = stderr;
+
+        var durationMatch = System.Text.RegularExpressions.Regex.Match(output, @"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})");
+        if (!durationMatch.Success)
+        {
+            progress = "Error: Could not determine video duration.";
+            isProcessing = false;
+            StateHasChanged();
+            return;
+        }
+
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var totalSeconds = int.Parse(durationMatch.Groups[1].Value) * 3600 +
+                           int.Parse(durationMatch.Groups[2].Value) * 60 +
+                           double.Parse(durationMatch.Groups[3].Value, culture);
+
+        var silenceStarts = System.Text.RegularExpressions.Regex.Matches(output, @"silence_start: ([\d\.]+)")
+                             .Select(m => double.Parse(m.Groups[1].Value, culture)).ToList();
+        var silenceEnds = System.Text.RegularExpressions.Regex.Matches(output, @"silence_end: ([\d\.]+)")
+                           .Select(m => double.Parse(m.Groups[1].Value, culture)).ToList();
+
+        var keepSegments = new List<(double Start, double End)>();
+        double currentTime = 0.0;
+
+        for (int i = 0; i < silenceStarts.Count; i++)
+        {
+            var start = silenceStarts[i];
+            var end = i < silenceEnds.Count ? silenceEnds[i] : totalSeconds;
+
+            if (start > currentTime)
+            {
+                keepSegments.Add((currentTime, start));
+            }
+            currentTime = end;
+        }
+
+        if (currentTime < totalSeconds)
+        {
+            keepSegments.Add((currentTime, totalSeconds));
+        }
+
+        if (keepSegments.Count <= 1)
+        {
+            progress = "No silence detected or video is already cut.";
+            isProcessing = false;
+            StateHasChanged();
+            return;
+        }
+
+        progress = $"Building filter for {keepSegments.Count} segments...";
+        StateHasChanged();
+
+        var filterComplex = "";
+        var concatInputs = "";
+
+        for (int i = 0; i < keepSegments.Count; i++)
+        {
+            var seg = keepSegments[i];
+            var s = Math.Round(seg.Start, 3).ToString(culture);
+            var e = Math.Round(seg.End, 3).ToString(culture);
+
+            filterComplex += $"[0:v]trim={s}:{e},setpts=PTS-STARTPTS[v{i}]; ";
+            filterComplex += $"[0:a]atrim={s}:{e},asetpts=PTS-STARTPTS[a{i}]; ";
+            concatInputs += $"[v{i}][a{i}]";
+        }
+
+        filterComplex += $"{concatInputs}concat=n={keepSegments.Count}:v=1:a=1[outv][outa]";
+
+        ffmpeg.WriteFile("filter.txt", System.Text.Encoding.UTF8.GetBytes(filterComplex));
+
+        progress = "Rendering final video... (This will take a while, please wait)";
+        StateHasChanged();
+
+        // 2. Renderizado usando CPU (preset ultrafast es vital para WebAssembly)
+        await ffmpeg.Run("-i", "input.mp4", "-filter_complex_script", "filter.txt", "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-b:a", "128k", "output.mp4");
+
+        progress = "Preparing download...";
+        StateHasChanged();
+
+        // 3. Leemos el resultado y usamos el método nativo para forzar la descarga en el navegador
+        var processedVideo = await ffmpeg.ReadFile("output.mp4");
+        FFmpegFactory.DownloadBufferAsFile(processedVideo, "vid_sin_silencio.mp4", "video/mp4");
+
+        // Limpiamos los archivos en memoria para no saturar la RAM de WebAssembly
+        ffmpeg.UnlinkFile("input.mp4");
+        ffmpeg.UnlinkFile("filter.txt");
+        ffmpeg.UnlinkFile("output.mp4");
+
+        progress = "";
+        isProcessing = false;
+        isDone = true;
+        StateHasChanged();
+    }
+}
