@@ -31,7 +31,7 @@
     private string progress = "";
     private FFMPEG? ffmpeg;
     
-    // Buffer para leer la consola de FFmpeg
+    // Aquí vivirá el texto que capturemos
     private string stderr = ""; 
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -40,19 +40,23 @@
         {
             if (FFmpegFactory.Runtime == null)
             {
+                // SOLUCIÓN: Usar el evento estático global de la fábrica
+                FFmpegFactory.Logger += CapturarLogs;
                 await FFmpegFactory.Init(Runtime);
             }
 
             ffmpeg = FFmpegFactory.CreateFFmpeg(new FFmpegConfig() { Log = true });
-            
-            // Suscribimos el evento para capturar los tiempos de silencio
-            ffmpeg.Logger += (e) =>
-            {
-                stderr += e.Message + "\n";
-            };
-
             await ffmpeg.Load();
             StateHasChanged(); 
+        }
+    }
+
+    // Método dedicado para recibir los mensajes desde JavaScript
+    private void CapturarLogs(Logs m)
+    {
+        if (!string.IsNullOrEmpty(m.Message))
+        {
+            stderr += m.Message + "\n";
         }
     }
 
@@ -71,24 +75,28 @@
         progress = "Writing input file to memory...";
         StateHasChanged();
 
+        Console.WriteLine("[DEBUG] 1. Leyendo archivo...");
         var inputData = new byte[selectedFile.Size];
-        using var stream = selectedFile.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024); // Límite de 100MB
+        using var stream = selectedFile.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
         await stream.ReadAsync(inputData);
 
         ffmpeg.WriteFile("input.mp4", inputData);
 
         progress = "Detecting silence (analyzing audio)...";
-        stderr = ""; // Limpiamos el texto de ejecuciones anteriores
+        stderr = ""; // Limpiamos la variable global para empezar en blanco
         StateHasChanged();
 
-        // 1. Escaneo de silencios
+        Console.WriteLine("[DEBUG] 2. Ejecutando FFmpeg...");
         await ffmpeg.Run("-i", "input.mp4", "-af", "silencedetect=noise=-30dB:d=0.3", "-f", "null", "-");
-
-        var output = stderr;
+        
+        // Guardamos una copia local de lo que la fábrica logró capturar
+        var output = stderr; 
+        Console.WriteLine($"[DEBUG] 3. Longitud capturada: {output.Length} caracteres");
 
         var durationMatch = System.Text.RegularExpressions.Regex.Match(output, @"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})");
         if (!durationMatch.Success)
         {
+            Console.WriteLine("[DEBUG] Fallo crítico. Text Dump:\n" + output);
             progress = "Error: Could not determine video duration.";
             isProcessing = false;
             StateHasChanged();
@@ -127,7 +135,7 @@
 
         if (keepSegments.Count <= 1)
         {
-            progress = "No silence detected or video is already cut.";
+            progress = "No silence detected.";
             isProcessing = false;
             StateHasChanged();
             return;
@@ -154,20 +162,20 @@
 
         ffmpeg.WriteFile("filter.txt", System.Text.Encoding.UTF8.GetBytes(filterComplex));
 
-        progress = "Rendering final video... (This will take a while, please wait)";
+        progress = "Rendering final video... (CPU processing, please wait)";
         StateHasChanged();
+        
+        Console.WriteLine("[DEBUG] 4. Iniciando transcodificación...");
 
-        // 2. Renderizado usando CPU (preset ultrafast es vital para WebAssembly)
         await ffmpeg.Run("-i", "input.mp4", "-filter_complex_script", "filter.txt", "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-b:a", "128k", "output.mp4");
 
         progress = "Preparing download...";
         StateHasChanged();
 
-        // 3. Leemos el resultado y usamos el método nativo para forzar la descarga en el navegador
         var processedVideo = await ffmpeg.ReadFile("output.mp4");
-        FFmpegFactory.DownloadBufferAsFile(processedVideo, "vid_sin_silencio.mp4", "video/mp4");
-
-        // Limpiamos los archivos en memoria para no saturar la RAM de WebAssembly
+        var urlFinal = FFmpegFactory.CreateURLFromBuffer(processedVideo, "vid_sin_silencio.mp4", "video/mp4");
+        await Runtime.InvokeVoidAsync("descargarVideo", "vid_sin_silencio.mp4", urlFinal);
+        
         ffmpeg.UnlinkFile("input.mp4");
         ffmpeg.UnlinkFile("filter.txt");
         ffmpeg.UnlinkFile("output.mp4");
@@ -176,5 +184,6 @@
         isProcessing = false;
         isDone = true;
         StateHasChanged();
+        Console.WriteLine("[DEBUG] 5. ¡Éxito Total!");
     }
 }

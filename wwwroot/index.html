@@ -29,6 +29,16 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+        window.descargarVideo = (fileName, url) => {
+            const anchorElement = document.createElement('a');
+            anchorElement.href = url;
+            anchorElement.download = fileName;
+            document.body.appendChild(anchorElement);
+            anchorElement.click();
+            anchorElement.remove();
+        }
+    </script>
 </body>
 
 </html>
