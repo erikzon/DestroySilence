@@ -6,24 +6,29 @@
 
 <div class="container mt-4">
     <h1>Video Silence Remover</h1>
-    <p>Select a video file to remove silence automatically directly in your browser.</p>
+    <p>Select a video file to remove silence automatically.</p>
 
     <div class="row mb-4 p-3 border rounded bg-light">
-        <div class="col-md-4">
-            <label class="form-label fw-bold">Noise Threshold (dB)</label>
-            <input type="number" class="form-control" @bind="noiseThreshold" />
-            <div class="form-text">Ej: -30 (Más cerca de 0 es menos estricto).</div>
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Noise Threshold: @noiseThreshold dB</label>
+            <input type="range" class="form-range" min="-60" max="0" step="1" value="@noiseThreshold"
+                   @oninput="UpdateThreshold" />
+            @* <input type="number" class="form-control mt-2" value="@noiseThreshold" @oninput="UpdateThreshold" /> *@
         </div>
-        <div class="col-md-4">
+        <div class="col-md-6">
             <label class="form-label fw-bold">Min Silence Duration (s)</label>
             <input type="number" step="0.1" class="form-control" @bind="silenceDuration" />
-            <div class="form-text">Ej: 0.3 (Segundos mínimos para cortar).</div>
         </div>
     </div>
 
-    <InputFile OnChange="OnFileSelected" class="form-control mb-3" />
-    
-    <button class="btn btn-primary" @onclick="ProcessVideo" disabled="@(selectedFile == null || isProcessing)">
+    <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" class="form-control mb-3" />
+
+    <div class="mb-4" style="@(hasFile ? "display:block;" : "display:none;")">
+        <label class="fw-bold">Audio Preview:</label><br />
+        <canvas id="waveformCanvas" width="800" height="150" class="border rounded bg-dark w-100"></canvas>
+    </div>
+
+    <button class="btn btn-primary" @onclick="ProcessVideo" disabled="@(!hasFile || isProcessing)">
         @(isProcessing ? "Processing..." : "Remove Silence")
     </button>
 
@@ -32,12 +37,9 @@
         <div class="mt-4">
             <p class="text-info fw-bold">@progressPhase</p>
             <div class="progress" style="height: 25px;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                     role="progressbar" 
-                     style="width: @(Math.Round(processingPercentage))%;" 
-                     aria-valuenow="@processingPercentage" 
-                     aria-valuemin="0" 
-                     aria-valuemax="100">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                     style="width: @(Math.Round(processingPercentage))%;" aria-valuenow="@processingPercentage"
+                     aria-valuemin="0" aria-valuemax="100">
                     @(Math.Round(processingPercentage))%
                 </div>
             </div>
@@ -48,9 +50,13 @@
     {
         <p class="mt-3 text-success fw-bold">¡Proceso completado! La descarga debería iniciar automáticamente.</p>
     }
+    
 </div>
 
 @code {
+    private InputFile fileInputRef; // Referencia al DOM
+    private bool hasFile = false;
+    
     // Variables de UI
     private IBrowserFile? selectedFile;
     private bool isProcessing = false;
@@ -68,7 +74,7 @@
     
     // Internos
     private FFMPEG? ffmpeg;
-    private string stderr = ""; 
+    private string stderr = "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -79,10 +85,34 @@
                 FFmpegFactory.Logger += CapturarLogs;
                 await FFmpegFactory.Init(Runtime);
             }
-
             ffmpeg = FFmpegFactory.CreateFFmpeg(new FFmpegConfig() { Log = true });
             await ffmpeg.Load();
-            StateHasChanged(); 
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        hasFile = true;
+        StateHasChanged();
+
+        // Ordenamos a JavaScript que lea el archivo directamente del Input y dibuje
+        await Runtime.InvokeVoidAsync("audioVisualizer.generate", "fileInputElem", "waveformCanvas", noiseThreshold);
+    }
+
+    // Este método se dispara instantáneamente al mover el slider o cambiar el número
+    private async Task UpdateThreshold(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int newValue))
+        {
+            noiseThreshold = newValue;
+            
+            // Solo redibujamos la línea en el canvas existente (súper rápido)
+            if (hasFile)
+            {
+                await Runtime.InvokeVoidAsync("audioVisualizer.draw", "waveformCanvas", noiseThreshold);
+            }
         }
     }
 
@@ -125,13 +155,6 @@
         }
     }
 
-    private void OnFileSelected(InputFileChangeEventArgs e)
-    {
-        selectedFile = e.File;
-        isDone = false;
-        processingPercentage = 0;
-    }
-
     private async Task ProcessVideo()
     {
         if (selectedFile == null || ffmpeg == null || !ffmpeg.IsLoaded) return;
@@ -154,7 +177,7 @@
         currentPhase = 1;
         currentTargetDuration = 0; // Se llenará dinámicamente con el log
         processingPercentage = 0;
-        stderr = ""; 
+        stderr = "";
         progressPhase = "Phase 1/2: Analyzing audio and detecting silence...";
         StateHasChanged();
 
@@ -248,7 +271,8 @@
         progressPhase = $"Phase 2/2: Rendering final video ({keepSegments.Count} segments)...";
         StateHasChanged();
 
-        await ffmpeg.Run("-i", "input.mp4", "-filter_complex_script", "filter.txt", "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-b:a", "128k", "output.mp4");
+        await ffmpeg.Run("-i", "input.mp4", "-filter_complex_script", "filter.txt", "-map", "[outv]", "-map", "[outa]", "-c:v",
+"libx264", "-preset", "ultrafast", "-c:a", "aac", "-b:a", "128k", "output.mp4");
 
         // --- FASE FINAL: DESCARGA ---
         Console.WriteLine("[DEBUG] Stage 5: Download & Cleanup.");

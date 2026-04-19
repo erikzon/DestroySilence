@@ -39,6 +39,98 @@
             anchorElement.remove();
         }
     </script>
+    <script>
+        window.audioVisualizer = {
+            audioDataDb: [],
+            
+            // Función para dibujar el canvas (se puede llamar varias veces para mover la línea roja)
+            draw: function (canvasId, thresholdDb) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+
+                ctx.clearRect(0, 0, width, height);
+
+                // Dibujar el fondo
+                ctx.fillStyle = '#1e1e1e';
+                ctx.fillRect(0, 0, width, height);
+
+                // Mapear decibelios (de -60dB a 0dB) a la altura del canvas
+                const minDb = -60;
+                const getH = (db) => {
+                    let clamped = Math.max(minDb, Math.min(0, db));
+                    return height - ((clamped - minDb) / (0 - minDb)) * height;
+                };
+
+                // Dibujar el waveform (barras)
+                const barWidth = width / this.audioDataDb.length;
+                ctx.fillStyle = '#4CAF50'; // Verde estilo consola
+                for (let i = 0; i < this.audioDataDb.length; i++) {
+                    const y = getH(this.audioDataDb[i]);
+                    ctx.fillRect(i * barWidth, y, barWidth - 1, height - y);
+                }
+
+                // Dibujar la línea de umbral (Threshold)
+                const thresholdY = getH(thresholdDb);
+                ctx.strokeStyle = '#FF3B30'; // Rojo advertencia
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, thresholdY);
+                ctx.lineTo(width, thresholdY);
+                ctx.stroke();
+
+                // Etiqueta de texto para la línea
+                ctx.fillStyle = '#FFF';
+                ctx.font = '12px Arial';
+                ctx.fillText(`${thresholdDb} dB`, 5, thresholdY - 5);
+            },
+
+            // Función pesada: decodifica el archivo y calcula los decibelios
+            generate: async function (inputElementOrId, canvasId, thresholdDb) {
+                let inputElement = inputElementOrId;
+                if (typeof inputElementOrId === 'string') {
+                    inputElement = document.getElementById(inputElementOrId);
+                }
+                console.log('audioVisualizer.generate:', inputElementOrId, inputElement);
+                if (!inputElement || !inputElement.files || inputElement.files.length === 0) return;
+                const file = inputElement.files[0];
+                const url = URL.createObjectURL(file); // Carga instantánea sin usar RAM de C#
+                
+                try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const response = await fetch(url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    
+                    const channelData = audioBuffer.getChannelData(0); // Tomamos el canal izquierdo
+                    const buckets = 150; // Cantidad de barras a dibujar
+                    const bucketSize = Math.floor(channelData.length / buckets);
+                    
+                    this.audioDataDb = [];
+                    
+                    for (let i = 0; i < buckets; i++) {
+                        let sumSquares = 0;
+                        for (let j = 0; j < bucketSize; j++) {
+                            let val = channelData[i * bucketSize + j];
+                            sumSquares += val * val;
+                        }
+                        let rms = Math.sqrt(sumSquares / bucketSize);
+                        let db = 20 * Math.log10(rms);
+                        if (!isFinite(db)) db = -100; // Silencio absoluto
+                        this.audioDataDb.push(db);
+                    }
+                    
+                    this.draw(canvasId, thresholdDb);
+                } catch (e) {
+                    console.error("Error visualizando audio:", e);
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
+            }
+        };
+    </script>
 </body>
 
 </html>
