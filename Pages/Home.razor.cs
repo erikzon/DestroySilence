@@ -45,6 +45,8 @@ namespace DestroySilence.Pages
             {
                 await Runtime.InvokeVoidAsync("audioVisualizer.registerResize","waveformCanvas");
 
+                await Runtime.InvokeVoidAsync("initThreeBackground", "three-bg-canvas");
+
                 if (FFmpegFactory.Runtime == null)
                 {
                     FFmpegFactory.Logger += CapturarLogs;
