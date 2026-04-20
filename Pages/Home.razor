@@ -1,22 +1,20 @@
 ﻿@page "/"
 @using FFmpegBlazor
 @using System.IO.IsolatedStorage
-@inject IJSRuntime Runtime
-@implements IDisposable
 
 <PageTitle>Destroy Silence</PageTitle>
 
 <div class="container mt-4">
-    <h1>Video Silence Remover</h1>
-    <p>Select a video file to remove silence automatically.</p>
+    <h1>@Loc["Title"]</h1>
+    <p>@Loc["Subtitle"]</p>
 
     <div class="row mb-4 p-3 border rounded bg-light">
         <div class="col-md-6">
-            <label class="form-label fw-bold">Noise Threshold: @noiseThreshold dB</label>
+            <label class="form-label fw-bold">@Loc["NoiseThreshold"] @noiseThreshold dB</label>
             <input type="range" class="form-range" min="-60" max="0" step="1" value="@noiseThreshold" @oninput="UpdateThreshold" />
         </div>
         <div class="col-md-6">
-            <label class="form-label fw-bold">Min Silence Duration (s)</label>
+            <label class="form-label fw-bold">@Loc["MinSilenceDuration"]</label>
             <input type="number" step="0.1" class="form-control" @bind="silenceDuration" />
         </div>
     </div>
@@ -24,12 +22,12 @@
     <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" class="form-control mb-3" />
 
     <div class="mb-4" style="@(hasFile ? "display:block;" : "display:none;")">
-        <label class="fw-bold">Audio Preview:</label><br />
+        <label class="fw-bold">@Loc["AudioPreview"]</label><br />
         <canvas id="waveformCanvas" width="800" height="150" class="border rounded bg-dark w-100"></canvas>
     </div>
 
     <button class="btn btn-primary" @onclick="ProcessVideo" disabled="@(!hasFile || isProcessing)">
-        @(isProcessing ? "Processing..." : "Remove Silence")
+        @(isProcessing ? Loc["Processing"] : Loc["RemoveSilence"])
     </button>
 
     @if (isProcessing)
@@ -48,257 +46,8 @@
 
     @if (isDone)
     {
-        <p class="mt-3 text-success fw-bold">¡Proceso completado! La descarga debería iniciar automáticamente.</p>
+        <p class="mt-3 text-success fw-bold">@Loc["ProcessCompleted"]</p>
     }
     
 </div>
 
-@code {
-    private InputFile fileInputRef; // Referencia al DOM
-    private bool hasFile = false;
-    
-    // Variables de UI
-    private IBrowserFile? selectedFile;
-    private bool isProcessing = false;
-    private bool isDone = false;
-    
-    // Parámetros dinámicos
-    private int noiseThreshold = -30;
-    private double silenceDuration = 0.3;
-
-    // Variables de Progreso
-    private string progressPhase = "";
-    private double processingPercentage = 0;
-    private double currentTargetDuration = 0;
-    private int currentPhase = 0; // 1 = Detección, 2 = Renderizado
-    
-    // Internos
-    private FFMPEG? ffmpeg;
-    private string stderr = "";
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            await Runtime.InvokeVoidAsync("audioVisualizer.registerResize","waveformCanvas");
-
-            if (FFmpegFactory.Runtime == null)
-            {
-                FFmpegFactory.Logger += CapturarLogs;
-                await FFmpegFactory.Init(Runtime);
-            }
-            ffmpeg = FFmpegFactory.CreateFFmpeg(new FFmpegConfig() { Log = true });
-            await ffmpeg.Load();
-            StateHasChanged();
-        }
-    }
-
-    public void Dispose()
-    {
-        Runtime.InvokeVoidAsync("audioVisualizer.unregisterResize");
-    }
-
-    private async Task OnFileSelected(InputFileChangeEventArgs e)
-    {
-        selectedFile = e.File;
-        hasFile = true;
-        StateHasChanged();
-
-        // Ordenamos a JavaScript que lea el archivo directamente del Input y dibuje
-        await Runtime.InvokeVoidAsync("audioVisualizer.generate", "fileInputElem", "waveformCanvas", noiseThreshold);
-    }
-
-    // Este método se dispara instantáneamente al mover el slider o cambiar el número
-    private async Task UpdateThreshold(ChangeEventArgs e)
-    {
-        if (int.TryParse(e.Value?.ToString(), out int newValue))
-        {
-            noiseThreshold = newValue;
-            
-            // Solo redibujamos la línea en el canvas existente (súper rápido)
-            if (hasFile)
-            {
-                await Runtime.InvokeVoidAsync("audioVisualizer.draw", "waveformCanvas", noiseThreshold);
-            }
-        }
-    }
-
-    // Interceptor de Logs (Aquí hacemos la magia del porcentaje)
-    private void CapturarLogs(Logs m)
-    {
-        if (string.IsNullOrEmpty(m.Message)) return;
-
-        // Solo necesitamos guardar todo el log durante la fase 1 para leer los silencios al final
-        if (currentPhase == 1)
-        {
-            stderr += m.Message + "\n";
-        }
-
-        // Si aún no conocemos la duración objetivo, intentamos atraparla cuando FFmpeg la imprime al inicio
-        if (currentTargetDuration == 0)
-        {
-            var durMatch = System.Text.RegularExpressions.Regex.Match(m.Message, @"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})");
-            if (durMatch.Success)
-            {
-                var culture = System.Globalization.CultureInfo.InvariantCulture;
-                currentTargetDuration = int.Parse(durMatch.Groups[1].Value) * 3600 +
-                                        int.Parse(durMatch.Groups[2].Value) * 60 +
-                                        double.Parse(durMatch.Groups[3].Value, culture);
-            }
-        }
-
-        // Buscamos la frase "time=HH:MM:SS" para mover la barra de progreso
-        var timeMatch = System.Text.RegularExpressions.Regex.Match(m.Message, @"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})");
-        if (timeMatch.Success && currentTargetDuration > 0)
-        {
-            var culture = System.Globalization.CultureInfo.InvariantCulture;
-            var currentSeconds = int.Parse(timeMatch.Groups[1].Value) * 3600 +
-                                 int.Parse(timeMatch.Groups[2].Value) * 60 +
-                                 double.Parse(timeMatch.Groups[3].Value, culture);
-                                 
-            // Calculamos el porcentaje, asegurando que no pase de 100%
-            processingPercentage = Math.Min(100, (currentSeconds / currentTargetDuration) * 100);
-            StateHasChanged(); // Forzamos la actualización visual de la barra
-        }
-    }
-
-    private async Task ProcessVideo()
-    {
-        if (selectedFile == null || ffmpeg == null || !ffmpeg.IsLoaded) return;
-
-        Console.WriteLine("[DEBUG] Stage 1: Load file to memory.");
-        isProcessing = true;
-        isDone = false;
-        processingPercentage = 0;
-        progressPhase = "Loading file into memory...";
-        StateHasChanged();
-
-        var inputData = new byte[selectedFile.Size];
-        using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024); // Subí el límite a 200MB para tus videos largos
-        await stream.ReadAsync(inputData);
-
-        ffmpeg.WriteFile("input.mp4", inputData);
-
-        // --- FASE 1: DETECCIÓN ---
-        Console.WriteLine("[DEBUG] Stage 2: Silence detection phase.");
-        currentPhase = 1;
-        currentTargetDuration = 0; // Se llenará dinámicamente con el log
-        processingPercentage = 0;
-        stderr = "";
-        progressPhase = "Phase 1/2: Analyzing audio and detecting silence...";
-        StateHasChanged();
-
-        // Aplicamos los valores de los inputs usando cultura invariante para evitar problemas de comas y puntos decimales
-        string durStr = silenceDuration.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        await ffmpeg.Run("-i", "input.mp4", "-af", $"silencedetect=noise={noiseThreshold}dB:d={durStr}", "-f", "null", "-");
-        
-        Console.WriteLine("[DEBUG] Stage 3: Parse segments.");
-        var output = stderr;
-
-        var culture = System.Globalization.CultureInfo.InvariantCulture;
-        var totalSeconds = currentTargetDuration; // Lo capturamos en CapturarLogs
-
-        if (totalSeconds == 0) // Fallback por si la regex inicial falló
-        {
-            var durationMatch = System.Text.RegularExpressions.Regex.Match(output, @"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})");
-            if (durationMatch.Success)
-            {
-                totalSeconds = int.Parse(durationMatch.Groups[1].Value) * 3600 +
-                               int.Parse(durationMatch.Groups[2].Value) * 60 +
-                               double.Parse(durationMatch.Groups[3].Value, culture);
-            }
-            else
-            {
-                Console.WriteLine("[DEBUG] ERROR: Failed to get total duration.");
-                isProcessing = false;
-                StateHasChanged();
-                return;
-            }
-        }
-
-        var silenceStarts = System.Text.RegularExpressions.Regex.Matches(output, @"silence_start: ([\d\.]+)")
-                             .Select(m => double.Parse(m.Groups[1].Value, culture)).ToList();
-        var silenceEnds = System.Text.RegularExpressions.Regex.Matches(output, @"silence_end: ([\d\.]+)")
-                           .Select(m => double.Parse(m.Groups[1].Value, culture)).ToList();
-
-        var keepSegments = new List<(double Start, double End)>();
-        double currentTime = 0.0;
-
-        for (int i = 0; i < silenceStarts.Count; i++)
-        {
-            var start = silenceStarts[i];
-            var end = i < silenceEnds.Count ? silenceEnds[i] : totalSeconds;
-
-            if (start > currentTime)
-            {
-                keepSegments.Add((currentTime, start));
-            }
-            currentTime = end;
-        }
-
-        if (currentTime < totalSeconds)
-        {
-            keepSegments.Add((currentTime, totalSeconds));
-        }
-
-        if (keepSegments.Count <= 1)
-        {
-            Console.WriteLine("[DEBUG] Finish: No silence detected.");
-            progressPhase = "No silence detected with current settings.";
-            isProcessing = false;
-            StateHasChanged();
-            return;
-        }
-
-        var filterComplex = "";
-        var concatInputs = "";
-        double expectedFinalDuration = 0;
-
-        for (int i = 0; i < keepSegments.Count; i++)
-        {
-            var seg = keepSegments[i];
-            var s = Math.Round(seg.Start, 3).ToString(culture);
-            var e = Math.Round(seg.End, 3).ToString(culture);
-            
-            expectedFinalDuration += (seg.End - seg.Start); // Sumamos los fragmentos para saber cuánto durará el video nuevo
-
-            filterComplex += $"[0:v]trim={s}:{e},setpts=PTS-STARTPTS[v{i}]; ";
-            filterComplex += $"[0:a]atrim={s}:{e},asetpts=PTS-STARTPTS[a{i}]; ";
-            concatInputs += $"[v{i}][a{i}]";
-        }
-
-        filterComplex += $"{concatInputs}concat=n={keepSegments.Count}:v=1:a=1[outv][outa]";
-        ffmpeg.WriteFile("filter.txt", System.Text.Encoding.UTF8.GetBytes(filterComplex));
-
-        // --- FASE 2: RENDERIZADO ---
-        Console.WriteLine("[DEBUG] Stage 4: Rendering phase.");
-        currentPhase = 2;
-        currentTargetDuration = expectedFinalDuration; // La barra ahora llega hasta la duración recortada
-        processingPercentage = 0;
-        progressPhase = $"Phase 2/2: Rendering final video ({keepSegments.Count} segments)...";
-        StateHasChanged();
-
-        await ffmpeg.Run("-i", "input.mp4", "-filter_complex_script", "filter.txt", "-map", "[outv]", "-map", "[outa]", "-c:v",
-"libx264", "-preset", "ultrafast", "-c:a", "aac", "-b:a", "128k", "output.mp4");
-
-        // --- FASE FINAL: DESCARGA ---
-        Console.WriteLine("[DEBUG] Stage 5: Download & Cleanup.");
-        progressPhase = "Finalizing download...";
-        processingPercentage = 100;
-        StateHasChanged();
-
-        var processedVideo = await ffmpeg.ReadFile("output.mp4");
-        var urlFinal = FFmpegFactory.CreateURLFromBuffer(processedVideo, "vid_sin_silencio.mp4", "video/mp4");
-        await Runtime.InvokeVoidAsync("descargarVideo", "vid_sin_silencio.mp4", urlFinal);
-
-        ffmpeg.UnlinkFile("input.mp4");
-        ffmpeg.UnlinkFile("filter.txt");
-        ffmpeg.UnlinkFile("output.mp4");
-
-        Console.WriteLine("[DEBUG] Finished completely.");
-        progressPhase = "";
-        isProcessing = false;
-        isDone = true;
-        StateHasChanged();
-    }
-}
