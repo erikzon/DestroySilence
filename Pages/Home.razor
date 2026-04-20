@@ -1,6 +1,8 @@
 ﻿@page "/"
 @using FFmpegBlazor
+@using System.IO.IsolatedStorage
 @inject IJSRuntime Runtime
+@implements IDisposable
 
 <PageTitle>Destroy Silence</PageTitle>
 
@@ -11,9 +13,7 @@
     <div class="row mb-4 p-3 border rounded bg-light">
         <div class="col-md-6">
             <label class="form-label fw-bold">Noise Threshold: @noiseThreshold dB</label>
-            <input type="range" class="form-range" min="-60" max="0" step="1" value="@noiseThreshold"
-                   @oninput="UpdateThreshold" />
-            @* <input type="number" class="form-control mt-2" value="@noiseThreshold" @oninput="UpdateThreshold" /> *@
+            <input type="range" class="form-range" min="-60" max="0" step="1" value="@noiseThreshold" @oninput="UpdateThreshold" />
         </div>
         <div class="col-md-6">
             <label class="form-label fw-bold">Min Silence Duration (s)</label>
@@ -80,6 +80,8 @@
     {
         if (firstRender)
         {
+            await Runtime.InvokeVoidAsync("audioVisualizer.registerResize","waveformCanvas");
+
             if (FFmpegFactory.Runtime == null)
             {
                 FFmpegFactory.Logger += CapturarLogs;
@@ -89,6 +91,11 @@
             await ffmpeg.Load();
             StateHasChanged();
         }
+    }
+
+    public void Dispose()
+    {
+        Runtime.InvokeVoidAsync("audioVisualizer.unregisterResize");
     }
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)

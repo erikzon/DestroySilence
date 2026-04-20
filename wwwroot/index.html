@@ -42,12 +42,25 @@
     <script>
         window.audioVisualizer = {
             audioDataDb: [],
-            
+            thresholdDb: -30,
             // Función para dibujar el canvas (se puede llamar varias veces para mover la línea roja)
             draw: function (canvasId, thresholdDb) {
+                this.thresholdDb = thresholdDb;
                 const canvas = document.getElementById(canvasId);
                 if (!canvas) return;
+
+                const dpr = window.devicePixelRatio || 1;
+                const cssWidth = canvas.offsetWidth;
+                const cssHeight = canvas.offsetHeight;
+
+                canvas.style.width = canvas.style.width || canvas.width + 'px';
+                canvas.style.height = canvas.style.height || canvas.height + 'px';
+
+                canvas.width = cssWidth * dpr;
+                canvas.height = cssHeight * dpr;
+
                 const ctx = canvas.getContext('2d');
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                 const width = canvas.width;
                 const height = canvas.height;
 
@@ -73,7 +86,7 @@
                 }
 
                 // Dibujar la línea de umbral (Threshold)
-                const thresholdY = getH(thresholdDb);
+                const thresholdY = getH(this.thresholdDb);
                 ctx.strokeStyle = '#FF3B30'; // Rojo advertencia
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -84,7 +97,7 @@
                 // Etiqueta de texto para la línea
                 ctx.fillStyle = '#FFF';
                 ctx.font = '12px Arial';
-                ctx.fillText(`${thresholdDb} dB`, 5, thresholdY - 5);
+                ctx.fillText(`${this.thresholdDb} dB`, 5, thresholdY - 5);
             },
 
             // Función pesada: decodifica el archivo y calcula los decibelios
@@ -97,19 +110,19 @@
                 if (!inputElement || !inputElement.files || inputElement.files.length === 0) return;
                 const file = inputElement.files[0];
                 const url = URL.createObjectURL(file); // Carga instantánea sin usar RAM de C#
-                
+
                 try {
                     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                     const response = await fetch(url);
                     const arrayBuffer = await response.arrayBuffer();
                     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                    
+
                     const channelData = audioBuffer.getChannelData(0); // Tomamos el canal izquierdo
                     const buckets = 150; // Cantidad de barras a dibujar
                     const bucketSize = Math.floor(channelData.length / buckets);
-                    
+
                     this.audioDataDb = [];
-                    
+
                     for (let i = 0; i < buckets; i++) {
                         let sumSquares = 0;
                         for (let j = 0; j < bucketSize; j++) {
@@ -121,15 +134,42 @@
                         if (!isFinite(db)) db = -100; // Silencio absoluto
                         this.audioDataDb.push(db);
                     }
-                    
+
                     this.draw(canvasId, thresholdDb);
                 } catch (e) {
                     console.error("Error visualizando audio:", e);
                 } finally {
                     URL.revokeObjectURL(url);
                 }
-            }
+            },
+            registerResize: function(canvasId) {
+                // Limpiar listener anterior si existe
+                if (this._resizeHandler) {
+                    window.removeEventListener('resize', this._resizeHandler);
+                }
+                
+                this._resizeHandler = debounce(() => {
+                    this.draw(canvasId, this.thresholdDb);
+                }, 150);
+                
+                window.addEventListener('resize', this._resizeHandler);
+            },
+
+            unregisterResize: function() {
+                if (this._resizeHandler) {
+                    window.removeEventListener('resize', this._resizeHandler);
+                    this._resizeHandler = null;
+                }
+            },
         };
+
+        function debounce(fn, delay) {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), delay);
+            };
+        }
     </script>
 </body>
 
