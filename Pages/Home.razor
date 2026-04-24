@@ -10,7 +10,23 @@
     <h1 class="accent-text">@Loc["Title"]</h1>
     <p class="sub-text">@Loc["Subtitle"]</p>
 
-    <div class="glass-panel mb-4">
+    <div class="file-upload-wrapper mb-4">
+        <div class="drop-zone">
+            <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" class="custom-file-input drop-zone-input" title="" />
+            <div class="drop-zone-text">
+                @if (hasFile && selectedFile != null)
+                {
+                    <span class="accent-text">@selectedFile.Name</span>
+                }
+                else
+                {
+                    <span>@Loc["DropFileHere"]</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel mb-4" style="@(hasFile ? "display:block;" : "display:none;")">
         <div class="row g-4">
             <div class="col-md-6">
                 <label class="custom-label">@Loc["NoiseThreshold"] <span class="accent-text">@noiseThreshold dB</span></label>
@@ -21,10 +37,6 @@
                 <input type="number" step="0.1" class="custom-input" @bind="silenceDuration" />
             </div>
         </div>
-    </div>
-
-    <div class="file-upload-wrapper mb-4">
-        <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" class="custom-file-input" />
     </div>
 
     <div class="glass-panel mb-4" style="@(hasFile ? "display:block;" : "display:none;")">

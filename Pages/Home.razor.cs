@@ -253,8 +253,13 @@ namespace DestroySilence.Pages
             StateHasChanged();
 
             var processedVideo = await ffmpeg.ReadFile("output.mp4");
-            var urlFinal = FFmpegFactory.CreateURLFromBuffer(processedVideo, "vid_sin_silencio.mp4", "video/mp4");
-            await Runtime.InvokeVoidAsync("descargarVideo", "vid_sin_silencio.mp4", urlFinal);
+
+            var extension = System.IO.Path.GetExtension(selectedFile.Name);
+            var nameWithoutExtension = System.IO.Path.GetFileNameWithoutExtension(selectedFile.Name);
+            var newFileName = $"{nameWithoutExtension}_modified{extension}";
+
+            var urlFinal = FFmpegFactory.CreateURLFromBuffer(processedVideo, newFileName, "video/mp4");
+            await Runtime.InvokeVoidAsync("descargarVideo", newFileName, urlFinal);
 
             ffmpeg.UnlinkFile("input.mp4");
             ffmpeg.UnlinkFile("filter.txt");
