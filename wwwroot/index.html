@@ -45,7 +45,7 @@
         window.audioVisualizer = {
             audioDataDb: [],
             thresholdDb: -30,
-            // Función para dibujar el canvas (se puede llamar varias veces para mover la línea roja)
+                // Function to draw the canvas (can be called multiple times to move the red line)
             draw: function (canvasId, thresholdDb) {
                 this.thresholdDb = thresholdDb;
                 const canvas = document.getElementById(canvasId);
@@ -68,41 +68,46 @@
 
                 ctx.clearRect(0, 0, width, height);
 
-                // Dibujar el fondo
-                ctx.fillStyle = '#1e1e1e';
+                // Draw the background
+                ctx.fillStyle = '#0A0F1D';
                 ctx.fillRect(0, 0, width, height);
 
-                // Mapear decibelios (de -60dB a 0dB) a la altura del canvas
+                // Map decibels (from -60dB to 0dB) to canvas height
                 const minDb = -60;
                 const getH = (db) => {
                     let clamped = Math.max(minDb, Math.min(0, db));
                     return height - ((clamped - minDb) / (0 - minDb)) * height;
                 };
 
-                // Dibujar el waveform (barras)
+                // Draw the waveform (bars)
                 const barWidth = width / this.audioDataDb.length;
-                ctx.fillStyle = '#4CAF50'; // Verde estilo consola
+                ctx.fillStyle = '#FFD700'; // Console-style gold
                 for (let i = 0; i < this.audioDataDb.length; i++) {
                     const y = getH(this.audioDataDb[i]);
                     ctx.fillRect(i * barWidth, y, barWidth - 1, height - y);
                 }
 
-                // Dibujar la línea de umbral (Threshold)
+                // Draw the threshold line (Threshold)
                 const thresholdY = getH(this.thresholdDb);
-                ctx.strokeStyle = '#FF3B30'; // Rojo advertencia
+                ctx.strokeStyle = '#FF3B30'; // Warning red
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(0, thresholdY);
                 ctx.lineTo(width, thresholdY);
                 ctx.stroke();
 
-                // Etiqueta de texto para la línea
-                ctx.fillStyle = '#FFF';
-                ctx.font = '12px Arial';
+                // Text label for the line
+                ctx.save();
+                ctx.font = '16px Arial Black';
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#000000';
+                ctx.strokeText(`${this.thresholdDb} dB`, 5, thresholdY - 5);
+                ctx.fillStyle = '#FF3B30';
                 ctx.fillText(`${this.thresholdDb} dB`, 5, thresholdY - 5);
+                ctx.restore();
             },
 
-            // Función pesada: decodifica el archivo y calcula los decibelios
+            // Heavy function: decodes the file and computes decibels
             generate: async function (inputElementOrId, canvasId, thresholdDb) {
                 let inputElement = inputElementOrId;
                 if (typeof inputElementOrId === 'string') {
@@ -111,7 +116,7 @@
                 console.log('audioVisualizer.generate:', inputElementOrId, inputElement);
                 if (!inputElement || !inputElement.files || inputElement.files.length === 0) return;
                 const file = inputElement.files[0];
-                const url = URL.createObjectURL(file); // Carga instantánea sin usar RAM de C#
+                const url = URL.createObjectURL(file); // Instant load without using C#'s RAM
 
                 try {
                     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -119,8 +124,8 @@
                     const arrayBuffer = await response.arrayBuffer();
                     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-                    const channelData = audioBuffer.getChannelData(0); // Tomamos el canal izquierdo
-                    const buckets = 150; // Cantidad de barras a dibujar
+                    const channelData = audioBuffer.getChannelData(0); // Use the left channel
+                    const buckets = 150; // Number of bars to draw
                     const bucketSize = Math.floor(channelData.length / buckets);
 
                     this.audioDataDb = [];
@@ -133,7 +138,7 @@
                         }
                         let rms = Math.sqrt(sumSquares / bucketSize);
                         let db = 20 * Math.log10(rms);
-                        if (!isFinite(db)) db = -100; // Silencio absoluto
+                        if (!isFinite(db)) db = -100; // Absolute silence
                         this.audioDataDb.push(db);
                     }
 
@@ -145,7 +150,7 @@
                 }
             },
             registerResize: function(canvasId) {
-                // Limpiar listener anterior si existe
+                // Clear previous listener if it exists
                 if (this._resizeHandler) {
                     window.removeEventListener('resize', this._resizeHandler);
                 }
