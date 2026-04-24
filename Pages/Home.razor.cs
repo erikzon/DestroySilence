@@ -26,7 +26,7 @@ namespace DestroySilence.Pages
         private bool isDone = false;
 
         // Dynamic Parameters
-        private int noiseThreshold = -30;
+        private int noiseThreshold = -20;
         private double silenceDuration = 0.3;
 
         // Progress Variables

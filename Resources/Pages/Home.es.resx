@@ -16,16 +16,16 @@
     <value>Eliminador de Silencio de Video</value>
   </data>
   <data name="Subtitle" xml:space="preserve">
-    <value>Selecciona un archivo de video para eliminar el silencio automáticamente.</value>
+    <value>La velocidad de procesamiento depende del tamaño del archivo y del rendimiento de tu sistema.</value>
   </data>
   <data name="NoiseThreshold" xml:space="preserve">
-    <value>Umbral de Ruido:</value>
+    <value>Umbral de Ruido, ajusta según tu preferencia:</value>
   </data>
   <data name="MinSilenceDuration" xml:space="preserve">
     <value>Duración Mínima del Silencio (s)</value>
   </data>
   <data name="AudioPreview" xml:space="preserve">
-    <value>Vista Previa de Audio:</value>
+    <value>Todo lo que está por debajo de la línea roja será detectado como silencio y removido del video:</value>
   </data>
   <data name="Processing" xml:space="preserve">
     <value>Procesando...</value>
@@ -52,6 +52,6 @@
     <value>Finalizando la descarga...</value>
   </data>
   <data name="DropFileHere" xml:space="preserve">
-    <value>Suelta tu archivo aquí...</value>
+    <value>Arrastra tu archivo aquí, todo será procesado localmente.</value>
   </data>
 </root>

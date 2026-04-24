@@ -90,21 +90,11 @@
                 // Draw the threshold line (Threshold)
                 const thresholdY = getH(this.thresholdDb);
                 ctx.strokeStyle = '#FF3B30'; // Warning red
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 3;
                 ctx.beginPath();
                 ctx.moveTo(0, thresholdY);
                 ctx.lineTo(width, thresholdY);
                 ctx.stroke();
-
-                // Text label for the line
-                ctx.save();
-                ctx.font = '16px Arial Black';
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = '#000000';
-                ctx.strokeText(`${this.thresholdDb} dB`, 5, thresholdY - 5);
-                ctx.fillStyle = '#FF3B30';
-                ctx.fillText(`${this.thresholdDb} dB`, 5, thresholdY - 5);
-                ctx.restore();
             },
 
             // Heavy function: decodes the file and computes decibels

@@ -16,16 +16,16 @@
     <value>Video Silence Remover</value>
   </data>
   <data name="Subtitle" xml:space="preserve">
-    <value>Select a video file to remove silence automatically.</value>
+    <value>The processing speed depends on the file size and your system's performance.</value>
   </data>
   <data name="NoiseThreshold" xml:space="preserve">
-    <value>Noise Threshold:</value>
+    <value>Noise Threshold, adjust to your preference:</value>
   </data>
   <data name="MinSilenceDuration" xml:space="preserve">
     <value>Min Silence Duration (s)</value>
   </data>
   <data name="AudioPreview" xml:space="preserve">
-    <value>Audio Preview:</value>
+    <value>Everything below the red line will be detected as silence and removed:</value>
   </data>
   <data name="Processing" xml:space="preserve">
     <value>Processing...</value>
@@ -52,6 +52,6 @@
     <value>Finalizing download...</value>
   </data>
   <data name="DropFileHere" xml:space="preserve">
-    <value>Drop your file here...</value>
+    <value>Drop your file here, everything will be processed locally.</value>
   </data>
 </root>
