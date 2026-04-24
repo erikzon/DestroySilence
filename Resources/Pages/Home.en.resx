@@ -51,4 +51,7 @@
   <data name="FinalizingDownload" xml:space="preserve">
     <value>Finalizing download...</value>
   </data>
+  <data name="DropFileHere" xml:space="preserve">
+    <value>Drop your file here...</value>
+  </data>
 </root>
