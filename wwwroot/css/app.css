@@ -96,6 +96,9 @@ body {
     font-size: 1.2rem;
     color: #94A3B8;
     pointer-events: none;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
 }
 
 /* Range Slider */
@@ -110,8 +113,8 @@ body {
 /* WebKit (Chrome, Edge, Safari) */
 .custom-range::-webkit-slider-runnable-track {
     width: 100%; 
-    height: 6px; /* Un poco más grueso para que destaque */
-    background: rgba(255, 255, 255, 0.2); /* Blanco semitransparente que resalta sobre el oscuro */
+    height: 6px;
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 3px;
 }
 
@@ -121,14 +124,14 @@ body {
     width: 18px; 
     border-radius: 50%;
     background: var(--accent-gold); 
-    margin-top: -6px; /* Centra la bolita verticalmente */
+    margin-top: -6px;
     cursor: pointer;
     box-shadow: 0 0 12px var(--accent-gold-glow);
     transition: transform 0.2s;
 }
 
 .custom-range::-webkit-slider-thumb:hover {
-    transform: scale(1.2); /* Pequeño efecto visual al pasar el mouse */
+    transform: scale(1.2);
 }
 
 /* Firefox */
@@ -195,10 +198,10 @@ body {
 
 /* --- Blazor Error UI --- */
 #blazor-error-ui {
-    display: none; /* ¡Esto es lo que faltaba para ocultarlo! */
-    background: rgba(185, 28, 28, 0.8); /* Fondo rojo oscuro tipo glassmorphism */
+    display: none;
+    background: rgba(185, 28, 28, 0.8);
     backdrop-filter: blur(10px);
-    border-top: 1px solid rgba(255, 215, 0, 0.3); /* Borde dorado para combinar */
+    border-top: 1px solid rgba(255, 215, 0, 0.3);
     bottom: 0;
     left: 0;
     padding: 0.8rem 1.5rem;
