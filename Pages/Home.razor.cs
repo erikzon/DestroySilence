@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -65,9 +66,52 @@ namespace DestroySilence.Pages
 
         private async Task OnFileSelected(InputFileChangeEventArgs e)
         {
-            selectedFile = e.File;
+            var file = e.File;
+            if (file == null) return;
+
+            // Allow only MP4 files (by content type or extension)
+            bool isMp4 = (file.ContentType?.Equals("video/mp4", StringComparison.OrdinalIgnoreCase) ?? false)
+                          || System.IO.Path.GetExtension(file.Name)?.Equals(".mp4", StringComparison.OrdinalIgnoreCase) == true;
+            if (!isMp4)
+            {
+                await Runtime.InvokeVoidAsync("alert", Loc["OnlyMp4Allowed"].Value);
+                selectedFile = null;
+                hasFile = false;
+                StateHasChanged();
+                return;
+            }
+
+            selectedFile = file;
             hasFile = true;
             StateHasChanged();
+
+            // Quick client-side size checks to avoid runtime exceptions
+            const long MAX_ALLOWED_BYTES = 200L * 1024 * 1024; // 200 MB (runtime enforced)
+            const long WARN_BYTES = 100L * 1024 * 1024; // 100 MB
+
+            if (selectedFile.Size > MAX_ALLOWED_BYTES)
+            {
+                var sizeMb = Math.Round(selectedFile.Size / (double)(1024 * 1024), 1);
+                var maxMb = MAX_ALLOWED_BYTES / (1024 * 1024);
+                await Runtime.InvokeVoidAsync("alert", Loc["FileTooLarge", sizeMb, maxMb].Value);
+                selectedFile = null;
+                hasFile = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (selectedFile.Size > WARN_BYTES)
+            {
+                var sizeMb = Math.Round(selectedFile.Size / (double)(1024 * 1024), 1);
+                var proceed = await Runtime.InvokeAsync<bool>("confirm", Loc["LargeFileWarning", sizeMb].Value);
+                if (!proceed)
+                {
+                    selectedFile = null;
+                    hasFile = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
 
             // Order JavaScript to read the file directly from the Input and draw
             await Runtime.InvokeVoidAsync("audioVisualizer.generate", "fileInputElem", "waveformCanvas", noiseThreshold);
@@ -131,6 +175,15 @@ namespace DestroySilence.Pages
         {
             if (selectedFile == null || ffmpeg == null || !ffmpeg.IsLoaded) return;
 
+            // Extra safeguard: ensure the selected file is MP4
+            bool isMp4 = (selectedFile.ContentType?.Equals("video/mp4", StringComparison.OrdinalIgnoreCase) ?? false)
+                          || System.IO.Path.GetExtension(selectedFile.Name)?.Equals(".mp4", StringComparison.OrdinalIgnoreCase) == true;
+            if (!isMp4)
+            {
+                await Runtime.InvokeVoidAsync("alert", Loc["OnlyMp4Allowed"].Value);
+                return;
+            }
+
             Console.WriteLine("[DEBUG] Stage 1: Load file to memory.");
             isProcessing = true;
             isDone = false;
@@ -138,9 +191,46 @@ namespace DestroySilence.Pages
             progressPhase = Loc["LoadingFile"];
             StateHasChanged();
 
-            var inputData = new byte[selectedFile.Size];
-            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024); // Raised the limit to 200MB for long videos
-            await stream.ReadAsync(inputData);
+            // Prevent runtime OpenReadStream exceptions by checking sizes first
+            const long MAX_ALLOWED_BYTES = 200L * 1024 * 1024; // 200 MB
+            const long WARN_BYTES = 100L * 1024 * 1024; // 100 MB
+
+            if (selectedFile.Size > MAX_ALLOWED_BYTES)
+            {
+                var sizeMb = Math.Round(selectedFile.Size / (double)(1024 * 1024), 1);
+                var maxMb = MAX_ALLOWED_BYTES / (1024 * 1024);
+                await Runtime.InvokeVoidAsync("alert", Loc["FileTooLarge", sizeMb, maxMb].Value);
+                isProcessing = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (selectedFile.Size > WARN_BYTES)
+            {
+                var sizeMb = Math.Round(selectedFile.Size / (double)(1024 * 1024), 1);
+                var proceed = await Runtime.InvokeAsync<bool>("confirm", Loc["LargeFileWarning", sizeMb].Value);
+                if (!proceed)
+                {
+                    isProcessing = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+
+            byte[] inputData;
+            try
+            {
+                inputData = new byte[(int)selectedFile.Size];
+                using var stream = selectedFile.OpenReadStream(maxAllowedSize: MAX_ALLOWED_BYTES);
+                await stream.ReadAsync(inputData);
+            }
+            catch (IOException ex)
+            {
+                await Runtime.InvokeVoidAsync("alert", Loc["UnableToReadFile", ex.Message].Value);
+                isProcessing = false;
+                StateHasChanged();
+                return;
+            }
 
             ffmpeg.WriteFile("input.mp4", inputData);
 

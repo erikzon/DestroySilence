@@ -131,6 +131,12 @@
                 console.log('audioVisualizer.generate:', inputElementOrId, inputElement);
                 if (!inputElement || !inputElement.files || inputElement.files.length === 0) return;
                 const file = inputElement.files[0];
+                // Only attempt to decode audio for MP4 files (guard against DOMExceptions)
+                const isMp4 = (file.type === 'video/mp4') || (file.name && file.name.toLowerCase().endsWith('.mp4'));
+                if (!isMp4) {
+                    console.warn('audioVisualizer.generate: ignoring non-mp4 file', file.type, file.name);
+                    return;
+                }
                 const url = URL.createObjectURL(file); // Instant load without using C#'s RAM
 
                 try {

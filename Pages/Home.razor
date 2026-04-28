@@ -12,7 +12,7 @@
 
     <div class="file-upload-wrapper mb-4">
         <div class="drop-zone">
-            <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" class="custom-file-input drop-zone-input" title="" />
+            <InputFile id="fileInputElem" @ref="fileInputRef" OnChange="OnFileSelected" accept="video/mp4,.mp4" class="custom-file-input drop-zone-input" title="" />
             <div class="drop-zone-text">
                 @if (hasFile && selectedFile != null)
                 {

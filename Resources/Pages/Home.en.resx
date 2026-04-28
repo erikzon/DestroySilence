@@ -54,4 +54,16 @@
   <data name="DropFileHere" xml:space="preserve">
     <value>Drop your file here, everything will be processed locally.</value>
   </data>
+  <data name="FileTooLarge" xml:space="preserve">
+    <value>The selected file ({0} MB) is too large. Maximum allowed size is {1} MB. Please choose a smaller file.</value>
+  </data>
+  <data name="LargeFileWarning" xml:space="preserve">
+    <value>The selected file is {0} MB and may take a long time to upload and process. Do you want to proceed?</value>
+  </data>
+  <data name="UnableToReadFile" xml:space="preserve">
+    <value>Unable to read the selected file: {0}</value>
+  </data>
+  <data name="OnlyMp4Allowed" xml:space="preserve">
+    <value>Only MP4 files are allowed. Please select an MP4 video.</value>
+  </data>
 </root>
